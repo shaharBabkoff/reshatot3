@@ -1,146 +1,279 @@
-#include <stdio.h>
-#include <stdlib.h> 
-#include <string.h> 
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <sys/socket.h>
-#include <unistd.h>
+#include <stdio.h>      // Standard input/output library
+#include <stdlib.h>     // Standard library
+#include <arpa/inet.h>  // For the in_addr structure and the inet_pton function
+#include <sys/socket.h> // For the socket function
+#include <unistd.h>     // For the close function
+#include <string.h>     // For the memset function
 #include <time.h>
+#include <netinet/tcp.h>
 
+#define TRUE 1
+#define FALSE 0
+#define COMMAND "COMMAND x"
+#define RECEIVE_COMMAND "COMMAND 1"
+#define EXIT_COMMAND "COMMAND 2"
+#define FILE_SIZE 3532695
 
-#define Receiver_PORT 5060
-#define MAX_senderS 1
+/*
+ * @brief The maximum number of clients that the server can handle.
+ * @note The default maximum number of clients is 1.
+ */
+#define MAX_CLIENTS 1
+
+/*
+ * @brief The buffer size to store the received message.
+ * @note The default buffer size is 1024.
+ */
 #define BUFFER_SIZE 1024
-#define EXIT_TERMINAL "EXIT"
+typedef struct TIME_AND_BANDWIDTH
+{
+    double duration;
+    double bandwidth;
+    struct TIME_AND_BANDWIDTH *next;
+} TIME_AND_BANDWIDTH;
 
+void usage()
+{
+    printf("Usage: ./TCP_Receiver -p PORT -algo ALGO\n");
+    printf("PORT - The TCP port of the Receiver.\n");
+    printf("ALGO -  TCP congestion control algorithm that will be used by the party.\n");
+}
 
-int main(void){
- // The variable to store the socket file descriptor.
-   // int sock = -1;
+int get_command(int client_sock)
+{
+    int command = 0;
+    char command_buffer[sizeof(COMMAND)];
+    // int bytes_read = 0;
+    // int size_received = 0;
 
-    // The variable to store the Receiver's address.
-    struct sockaddr_in Receiver;
+    // size_buffer can contain a string representation of an int which can be up to 11 characters (including '\0')
+    // char size_buffer[11] = "";
+    for (int i = 0; i < sizeof(COMMAND); i++)
+    {
+        recv(client_sock, &command_buffer[i], 1, 0);
+    }
+    if (strcmp(command_buffer, EXIT_COMMAND) == 0)
+    {
+        printf("Received exit command\n");
+        command = 0;
+    }
+    else if (strcmp(command_buffer, RECEIVE_COMMAND) == 0)
+    {
+        command = 1;
+    }
 
-    // The variable to store the sender's address.
-    struct sockaddr_in sender;
+    return command;
+}
+TIME_AND_BANDWIDTH *read_file(int client_sock, int file_size, char *buffer, int buffer_size)
+{
+    TIME_AND_BANDWIDTH *ret_val = NULL;
+    time_t startTime, endTime;
+    // time(&startTime);
+    startTime = time(0);
+    int bytes_received = 0;
 
-    // Stores the sender's structure length.
-    socklen_t sender_len = sizeof(sender);
+    while (bytes_received < file_size)
+    {
+        int n;
+        n = recv(client_sock, buffer + bytes_received, buffer_size - bytes_received, 0);
+        bytes_received += n;
+        if (n <= 0)
+        {
+            return ret_val;
+        }
+    }
+    //time(&endTime);
+    endTime = time(0);
+    printf("bytes received: %d\n", bytes_received);
+    ret_val = (TIME_AND_BANDWIDTH *)malloc(sizeof(TIME_AND_BANDWIDTH));
+    ret_val->duration = difftime(endTime, startTime);
+    ret_val->bandwidth = bytes_received / ret_val->duration / (1024.0 * 1024.0); // Speed in MB/s
+    ret_val->next = NULL;
+    return ret_val;
+}
 
-    // Create a message to send to the sender.
-    // char *message = "hello from receiver\n";
+int main(int argc, char *argv[])
+{
+    TIME_AND_BANDWIDTH *time_and_bandwidth_list = NULL, *last_time_and_bandwidth = NULL;
+    char *buffer = (char *)malloc(FILE_SIZE);
+    int port = -1;
+    // char *algo = "";
 
-    // // Get the message length.
-    // int messageLen = strlen(message) + 1;
+    if ((argc != 5) ||
+        !(strcmp(argv[1], "-p") == 0) ||
+        !(strcmp(argv[3], "-algo") == 0) ||
+        !((strcmp(argv[4], "reno") == 0) || (strcmp(argv[4], "cubic") == 0)) ||
+        (port = atoi(argv[2])) <= 0)
+    {
+        usage();
+        exit(-1);
+    }
 
-    // The variable to store the socket option for reusing the receiver's address.
+    printf("port = %d, algo = %s\n", port, argv[4]);
+
+    printf("Starting Receiver...\n");
+
+    // The variable to store the socket file descriptor.
+    int sock = -1;
+
+    // The variable to store the server's address.
+    struct sockaddr_in server;
+
+    // The variable to store the client's address.
+    struct sockaddr_in client;
+
+    // Stores the client's structure length.
+    socklen_t client_len = sizeof(client);
+
+    // The variable to store the socket option for reusing the server's address.
     int opt = 1;
 
-    time_t start,end;
-    int listenfd;
-    
-    ssize_t total_bytes_received = 0;
-
-    // Reset the Receiver and sender structures to zeros.
-    memset(&Receiver, 0, sizeof(Receiver));
-    memset(&sender, 0, sizeof(sender));
+    // Reset the server and client structures to zeros.
+    memset(&server, 0, sizeof(server));
+    memset(&client, 0, sizeof(client));
 
     // Try to create a TCP socket (IPv4, stream-based, default protocol).
-    listenfd = socket(AF_INET, SOCK_STREAM, 0);
+    sock = socket(AF_INET, SOCK_STREAM, 0);
 
-     if (listenfd == -1)
+    if (sock == -1)
     {
         perror("socket(2)");
         return 1;
     }
-     // Set the socket option to reuse the Receiver's address.
-    // This is useful to avoid the "Address already in use" error message when restarting the Receiver.
-    if (setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0)
+
+    // Set the socket option to reuse the server's address.
+    // This is useful to avoid the "Address already in use" error message when restarting the server.
+    if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0)
     {
         perror("setsockopt(2)");
-        close(listenfd);
+        close(sock);
         return 1;
     }
 
-    // Set the Receiver's address to "0.0.0.0" (all IP addresses on the local machine).
-    Receiver.sin_addr.s_addr = INADDR_ANY;
+    // Set the server's address to "0.0.0.0" (all IP addresses on the local machine).
+    server.sin_addr.s_addr = INADDR_ANY;
 
-    // Set the Receiver's address family to AF_INET (IPv4).
-    Receiver.sin_family = AF_INET;
+    // Set the server's address family to AF_INET (IPv4).
+    server.sin_family = AF_INET;
 
-    // Set the Receiver's port to the specified port. Note that the port must be in network byte order.
-    Receiver.sin_port = htons(Receiver_PORT);
+    // Set the server's port to the specified port. Note that the port must be in network byte order.
+    server.sin_port = htons(port);
 
-     // Try to bind the socket to the Receiver's address and port.
-    if (bind(listenfd, (struct sockaddr *)&Receiver, sizeof(Receiver)) < 0)
+    // Try to bind the socket to the server's address and port.
+    if (bind(sock, (struct sockaddr *)&server, sizeof(server)) < 0)
     {
         perror("bind(2)");
-        close(listenfd);
+        close(sock);
         return 1;
     }
 
     // Try to listen for incoming connections.
-    if (listen(listenfd, MAX_senderS) < 0)
+    if (listen(sock, MAX_CLIENTS) < 0)
     {
         perror("listen(2)");
-        close(listenfd);
+        close(sock);
         return 1;
     }
 
-fprintf(stdout, "Listening for incoming connections on port %d...\n", Receiver_PORT);
- while (1)
+    fprintf(stdout, "Waiting for TCP connections\n");
+
+    // Try to accept a new client connection.
+    int client_sock = accept(sock, (struct sockaddr *)&client, &client_len);
+
+    // If the accept call failed, print an error message and return 1.
+    if (client_sock < 0)
     {
-        // Try to accept a new sender connection.
-        int connfd = accept(listenfd, (struct sockaddr *)&sender, &sender_len);
-
-        // If the accept call failed, print an error message and return 1.
-        if (connfd < 0)
-        {
-            perror("accept(2)");
-            close(listenfd);
-            return 1;
-        }
-
-        // Print a message to the standard output to indicate that a new sender has connected.
-        fprintf(stdout, "sender %s:%d connected\n", inet_ntoa(sender.sin_addr), ntohs(sender.sin_port));
-
-        // Create a buffer to store the received message.
-        char buffer[BUFFER_SIZE] = {0};
-
-        // Receive the file
-    int bytes_received;
-    time(&start); // Start time measurement
-    while ((bytes_received = recv(connfd, buffer, BUFFER_SIZE, 0)) > 0) {
-        total_bytes_received += bytes_received;
-        // Process received data (e.g., write to a file)
+        perror("accept(2)");
+        close(sock);
+        return 1;
     }
-   time(&end); // End time measurement
+    if (setsockopt(client_sock, IPPROTO_TCP, TCP_CONGESTION, argv[4], strlen(argv[4])) != 0)
+    {
+        close(client_sock);
+        close(sock);
+        perror("setsockopt");
+        return -1;
+    }
 
-    printf("File transfer completed.\n");
-    printf("Waiting for Sender response...\n");
+    // Print a message to the standard output to indicate that a new client has connected.
+    fprintf(stdout, "Sender connected, beginning to receive file...\n");
 
-    // Here, add logic to wait for and process the sender's response, such as an exit message
+    // int finishProgram = FALSE;
+    // time_t startTime, endTime;
+    printf("Sender connected, beginning to receive file...\n");
+    while ((get_command(client_sock)) > 0)
+    {
+        // printf("file size is %d, going to read file\n", FILE_SIZE);
+        TIME_AND_BANDWIDTH *tmp;
+        if ((tmp = read_file(client_sock, FILE_SIZE, buffer, FILE_SIZE)) == NULL)
+        {
+            printf("socket dissconected, exiting\n");
+            break;
+        }
+        if (time_and_bandwidth_list == NULL)
+        {
+            time_and_bandwidth_list = tmp;
+            last_time_and_bandwidth = tmp;
+        }
+        else
+        {
+            last_time_and_bandwidth->next = tmp;
+            last_time_and_bandwidth = tmp;
+        }
+        printf("Waiting for Sender response...\n");
+    }
+    TIME_AND_BANDWIDTH *current = time_and_bandwidth_list;
+    // double sum_avarege = 0;
+    // double sum_bandwidth = 0;
+    int index = 0;
+    while (current != NULL)
+    {
+        index++;
+        printf("- Run #%d Data: Time=%.6fs; Speed=%.6fMB/s\n", index, current->duration, current->bandwidth);
+        current = current->next;
+    }
+    // printf("got an exit command\n");
+    /*
+        while (!finishProgram)
+        {
+            // Create a buffer to store the received message.
+            char buffer[BUFFER_SIZE] = {0};
 
-    printf("Sender sent exit message.\n");
+            int bytes_received, total_bytes_received;
+            time(&startTime); // Start time measurement
+            while ((bytes_received = recv(client_sock, buffer, BUFFER_SIZE, 0)) > 0)
+            {
+                total_bytes_received += bytes_received;
+                // Process received data (e.g., write to a file)
+                // If the message receiving failed, print an error message and return 1.
+                if (bytes_received < 0)
+                {
+                    perror("recv(2)");
+                    close(client_sock);
+                    close(sock);
+                    return 1;
+                }
 
-    // Calculate and print statistics
-    double transfer_time = difftime(end, start);
-    double speed = total_bytes_received / transfer_time / (1024.0 * 1024.0); // Speed in MB/s
+                // If the amount of received bytes is 0, the client has disconnected.
+                // Close the client's socket and continue to the next iteration.
+                else if (bytes_received == 0)
+                {
+                    fprintf(stdout, "Client %s:%d disconnected\n", inet_ntoa(client.sin_addr), ntohs(client.sin_port));
+                    close(client_sock);
+                    continue;
+                }
 
-    printf("----------------------------------\n");
-    printf("- * Statistics * -\n");
-    printf("- Run #1 Data: Time=%.2fs; Speed=%.2fMB/s\n", transfer_time, speed);
-    printf("-\n");
-    printf("- Average time: %.2fs\n", transfer_time); // Assuming a single run for simplicity
-    printf("- Average bandwidth: %.2fMB/s\n", speed);
-    printf("----------------------------------\n");
+                // Ensure that the buffer is null-terminated, no matter what message was received.
+                // This is important to avoid SEGFAULTs when printing the buffer.
+                if (buffer[BUFFER_SIZE - 1] != '\0')
+                    buffer[BUFFER_SIZE - 1] = '\0';
+            }
+            time(&endTime); // End time measurement
 
-    printf("Receiver end.\n");
+            fprintf(stdout, "File transfer completed.\n");
 
-    // Cleanup
-    close(connfd);
-    close(listenfd);
-
-    return 0;
-}
+            fprintf(stdout, "Waiting for Sender response...\n");
+        }
+    */
+    return 1;
 }
