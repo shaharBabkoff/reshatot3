@@ -7,11 +7,8 @@
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <unistd.h>
-
 #include <netinet/tcp.h>
 
-// #define Receiver_PORT 5060
-// #define Receiver_IP_ADDRESS "127.0.0.1"
 #define BUFFER_SIZE 1024
 #define EXIT_TERMINAL "EXIT"
 #define FILE_SIZE 3532695
@@ -57,12 +54,6 @@ int main(int argc, char *argv[])
     int sock = -1;
     // The variable to store the Receiver's address.
     struct sockaddr_in Sender;
-    // Create a message to send to the Receiver.
-    // char *message = "Hello from sender";
-    // Create a buffer to store the received message.
-    // char buffer[BUFFER_SIZE] = {0};
-    // FILE *file;
-    // Reset the Receiver structure to zeros.
     memset(&Sender, 0, sizeof(Sender));
     // Try to create a TCP socket
     fprintf(stdout, "try to create TCP");
@@ -112,48 +103,9 @@ int main(int argc, char *argv[])
         send(sock, buffer, FILE_SIZE, 0);
         printf("please enter your choice: (1 for resending, any other character to quit)\n");
         scanf(" %c", &userChoise);
-        // userChoise = getchar();
         printf("user choice %c\n", userChoise);
     }
     send(sock, "COMMAND 2", 10, 0);
-    /*    "Sending message to the Receiver: %s\n", message);
-    // open file
-    file =fopen("check","rb");
-    if (file == NULL){
-        perror("file open failed");
-        exit (EXIT_FAILURE);
-    }
-
-    do {
-        fseek(file, 0, SEEK_SET);
-
-        // read and send file
-        int byte_read;
-        while ((byte_read = fread(buffer, 1, BUFFER_SIZE, file)) > 0) {
-            send(sock, buffer, byte_read, 0);
-        }
-
-        // Always close the file here, after it's done being used
-        fclose(file);
-        char user_input[10];
-        printf("Send the file again? (yes/no): ");
-        scanf("%s", user_input);
-
-        if (strcmp(user_input, "no") == 0) {
-            send(sock, EXIT_TERMINAL, strlen(EXIT_TERMINAL), 0);
-            break;
-        } else {
-            // Reopen the file for the next iteration
-            file = fopen("check", "rb");
-            if (file == NULL) {
-                perror("file open failed");
-                exit(EXIT_FAILURE);
-            }
-        }
-
-    } while (1);
-    */
-    // Close the connection
     close(sock);
     fprintf(stdout, "Connection closed!\n");
     return 0;
