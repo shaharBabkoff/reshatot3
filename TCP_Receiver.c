@@ -4,8 +4,8 @@
 #include <sys/socket.h> // For the socket function
 #include <unistd.h>     // For the close function
 #include <string.h>     // For the memset function
-#include <time.h>
 #include <netinet/tcp.h>
+#include <sys/time.h>
 
 #define TRUE 1
 #define FALSE 0
@@ -25,6 +25,7 @@
  * @note The default buffer size is 1024.
  */
 #define BUFFER_SIZE 1024
+
 typedef struct TIME_AND_BANDWIDTH
 {
     double duration;
@@ -43,11 +44,6 @@ int get_command(int client_sock)
 {
     int command = 0;
     char command_buffer[sizeof(COMMAND)];
-    // int bytes_read = 0;
-    // int size_received = 0;
-
-    // size_buffer can contain a string representation of an int which can be up to 11 characters (including '\0')
-    // char size_buffer[11] = "";
     for (int i = 0; i < sizeof(COMMAND); i++)
     {
         recv(client_sock, &command_buffer[i], 1, 0);
@@ -67,11 +63,9 @@ int get_command(int client_sock)
 TIME_AND_BANDWIDTH *read_file(int client_sock, int file_size, char *buffer, int buffer_size)
 {
     TIME_AND_BANDWIDTH *ret_val = NULL;
-    time_t startTime, endTime;
-    // time(&startTime);
-    startTime = time(0);
+    struct timeval startTime, endTime;
     int bytes_received = 0;
-
+    gettimeofday(&startTime, NULL);
     while (bytes_received < file_size)
     {
         int n;
@@ -82,12 +76,12 @@ TIME_AND_BANDWIDTH *read_file(int client_sock, int file_size, char *buffer, int 
             return ret_val;
         }
     }
-    //time(&endTime);
-    endTime = time(0);
+    gettimeofday(&endTime, NULL);
     printf("bytes received: %d\n", bytes_received);
     ret_val = (TIME_AND_BANDWIDTH *)malloc(sizeof(TIME_AND_BANDWIDTH));
-    ret_val->duration = difftime(endTime, startTime);
-    ret_val->bandwidth = bytes_received / ret_val->duration / (1024.0 * 1024.0); // Speed in MB/s
+    // ret_val->duration = (endTime.tv_sec - startTime.tv_sec) + (endTime.tv_usec - startTime.tv_usec) / 1000000.0;
+    ret_val->duration = ((endTime.tv_sec - startTime.tv_sec) * 1000.0) + ((endTime.tv_usec - startTime.tv_usec) / 1000.0); // Convert to milliseconds
+    ret_val->bandwidth = bytes_received / ret_val->duration / (1024.0 * 1024.0);                                           // Speed in MB/s
     ret_val->next = NULL;
     return ret_val;
 }
@@ -97,7 +91,6 @@ int main(int argc, char *argv[])
     TIME_AND_BANDWIDTH *time_and_bandwidth_list = NULL, *last_time_and_bandwidth = NULL;
     char *buffer = (char *)malloc(FILE_SIZE);
     int port = -1;
-    // char *algo = "";
 
     if ((argc != 5) ||
         !(strcmp(argv[1], "-p") == 0) ||
@@ -110,7 +103,6 @@ int main(int argc, char *argv[])
     }
 
     printf("port = %d, algo = %s\n", port, argv[4]);
-
     printf("Starting Receiver...\n");
 
     // The variable to store the socket file descriptor.
@@ -197,9 +189,6 @@ int main(int argc, char *argv[])
 
     // Print a message to the standard output to indicate that a new client has connected.
     fprintf(stdout, "Sender connected, beginning to receive file...\n");
-
-    // int finishProgram = FALSE;
-    // time_t startTime, endTime;
     printf("Sender connected, beginning to receive file...\n");
     while ((get_command(client_sock)) > 0)
     {
@@ -222,58 +211,23 @@ int main(int argc, char *argv[])
         }
         printf("Waiting for Sender response...\n");
     }
+    printf("----------------------------------\n");
+    printf("- * Statistics * -\n");
     TIME_AND_BANDWIDTH *current = time_and_bandwidth_list;
-    // double sum_avarege = 0;
-    // double sum_bandwidth = 0;
+    double sum_avarege = 0;
+    double sum_bandwidth = 0;
     int index = 0;
     while (current != NULL)
     {
         index++;
-        printf("- Run #%d Data: Time=%.6fs; Speed=%.6fMB/s\n", index, current->duration, current->bandwidth);
+        printf("- Run #%d Data: Time=%.6fms; Speed=%.6fMB/s\n", index, current->duration, current->bandwidth);
+        sum_avarege += current->duration;
+        sum_bandwidth += current->bandwidth;
         current = current->next;
     }
-    // printf("got an exit command\n");
-    /*
-        while (!finishProgram)
-        {
-            // Create a buffer to store the received message.
-            char buffer[BUFFER_SIZE] = {0};
-
-            int bytes_received, total_bytes_received;
-            time(&startTime); // Start time measurement
-            while ((bytes_received = recv(client_sock, buffer, BUFFER_SIZE, 0)) > 0)
-            {
-                total_bytes_received += bytes_received;
-                // Process received data (e.g., write to a file)
-                // If the message receiving failed, print an error message and return 1.
-                if (bytes_received < 0)
-                {
-                    perror("recv(2)");
-                    close(client_sock);
-                    close(sock);
-                    return 1;
-                }
-
-                // If the amount of received bytes is 0, the client has disconnected.
-                // Close the client's socket and continue to the next iteration.
-                else if (bytes_received == 0)
-                {
-                    fprintf(stdout, "Client %s:%d disconnected\n", inet_ntoa(client.sin_addr), ntohs(client.sin_port));
-                    close(client_sock);
-                    continue;
-                }
-
-                // Ensure that the buffer is null-terminated, no matter what message was received.
-                // This is important to avoid SEGFAULTs when printing the buffer.
-                if (buffer[BUFFER_SIZE - 1] != '\0')
-                    buffer[BUFFER_SIZE - 1] = '\0';
-            }
-            time(&endTime); // End time measurement
-
-            fprintf(stdout, "File transfer completed.\n");
-
-            fprintf(stdout, "Waiting for Sender response...\n");
-        }
-    */
+    printf("- Average time: %.2fms\n", sum_avarege / (double)index);
+    printf("- Average bandwidth: %.2fMB/s\n", sum_bandwidth / (double)index);
+    printf("----------------------------------\n");
+    printf("Receiver end.\n");
     return 1;
 }
