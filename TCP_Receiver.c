@@ -6,13 +6,13 @@
 #include <string.h>     // For the memset function
 #include <netinet/tcp.h>
 #include <sys/time.h>
-
-#define TRUE 1
-#define FALSE 0
-#define COMMAND "COMMAND x"
-#define RECEIVE_COMMAND "COMMAND 1"
-#define EXIT_COMMAND "COMMAND 2"
-#define FILE_SIZE 3532695
+ #include "TCP.h"
+// #define TRUE 1
+// #define FALSE 0
+// #define COMMAND "COMMAND x"
+// #define RECEIVE_COMMAND "COMMAND 1"
+// #define EXIT_COMMAND "COMMAND 2"
+// #define FILE_SIZE 3532695
 
 /*
  * @brief The maximum number of clients that the server can handle.
@@ -229,5 +229,14 @@ int main(int argc, char *argv[])
     printf("- Average bandwidth: %.2fMB/s\n", sum_bandwidth / (double)index);
     printf("----------------------------------\n");
     printf("Receiver end.\n");
+    TIME_AND_BANDWIDTH *current2 = time_and_bandwidth_list, *temp;
+    while (current2 != NULL)
+    {
+        temp = current2;
+        current2 = current2->next;
+        free(temp);
+    }
+    free(buffer);
+
     return 1;
 }
