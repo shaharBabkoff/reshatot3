@@ -9,8 +9,8 @@
 #include <unistd.h>
 #include <netinet/tcp.h>
 
-#define BUFFER_SIZE 1024
-#define EXIT_TERMINAL "EXIT"
+//#define BUFFER_SIZE 1024
+//#define EXIT_TERMINAL "EXIT"
 #define FILE_SIZE 3532695
 
 void usage()
@@ -53,8 +53,8 @@ int main(int argc, char *argv[])
     // The variable to store the socket file descriptor
     int sock = -1;
     // The variable to store the Receiver's address.
-    struct sockaddr_in Sender;
-    memset(&Sender, 0, sizeof(Sender));
+    struct sockaddr_in server;
+    memset(&server, 0, sizeof(server));
     // Try to create a TCP socket
     fprintf(stdout, "try to create TCP");
     sock = socket(AF_INET, SOCK_STREAM, 0);
@@ -69,23 +69,23 @@ int main(int argc, char *argv[])
         perror("setsockopt");
         return -1;
     }
-    if (inet_pton(AF_INET, ip, &Sender.sin_addr) <= 0)
+    if (inet_pton(AF_INET, ip, &server.sin_addr) <= 0)
     {
         perror("inet_pton(3)");
         close(sock);
         return 1;
     }
     // Set the Receiver's address family to AF_INET (IPv4).
-    Sender.sin_family = AF_INET;
+    server.sin_family = AF_INET;
 
     // Set the Receiver's port to the defined port. Note that the port must be in network byte order,
     // so we first convert it to network byte order using the htons function.
-    Sender.sin_port = htons(port);
+    server.sin_port = htons(port);
 
     fprintf(stdout, "Connecting to %s:%d...\n", ip, port);
 
     // Try to connect to the Receiver using the socket and the Receiver structure.
-    if (connect(sock, (struct sockaddr *)&Sender, sizeof(Sender)) < 0)
+    if (connect(sock, (struct sockaddr *)&server, sizeof(server)) < 0)
     {
         perror("connect(2)");
         close(sock);
