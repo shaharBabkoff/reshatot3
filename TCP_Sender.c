@@ -8,10 +8,11 @@
 #include <sys/socket.h>
 #include <unistd.h>
 #include <netinet/tcp.h>
+#include "TCP.h"
 
-//#define BUFFER_SIZE 1024
-//#define EXIT_TERMINAL "EXIT"
-#define FILE_SIZE 3532695
+// #define BUFFER_SIZE 1024
+// #define EXIT_TERMINAL "EXIT"
+// #define FILE_SIZE 3532695
 
 void usage()
 {
@@ -43,7 +44,7 @@ int main(int argc, char *argv[])
     if (fp == NULL)
     {
         perror("Error in reading file.");
-        exit(1);
+        exit(-1);
     }
     fgets(buffer, FILE_SIZE, fp);
     ip = argv[2];
@@ -99,14 +100,15 @@ int main(int argc, char *argv[])
     while (userChoise == '1')
     {
 
-        send(sock, "COMMAND 1", 10, 0);
+        send(sock, RECEIVE_COMMAND, 10, 0);
         send(sock, buffer, FILE_SIZE, 0);
         printf("please enter your choice: (1 for resending, any other character to quit)\n");
         scanf(" %c", &userChoise);
         printf("user choice %c\n", userChoise);
     }
-    send(sock, "COMMAND 2", 10, 0);
+    send(sock, EXIT_COMMAND, 10, 0);
     close(sock);
     fprintf(stdout, "Connection closed!\n");
+    free(buffer);
     return 0;
 }
