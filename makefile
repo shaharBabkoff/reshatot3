@@ -2,7 +2,9 @@
 CC=gcc
 
 # Compiler flags
-CFLAGS=-Wall
+#CFLAGS=-Wall
+CFLAGS=-Wall -I./include
+
 
 # Executable names
 RECEIVER=TCP_Receiver
@@ -15,10 +17,10 @@ RUDP_API_OBJ=RUDP_API.o
 
 all: $(RECEIVER) $(SENDER) $(RUDP_RECEIVER) $(RUDP_SENDER)
 
-$(RECEIVER): TCP_Receiver.c
+$(RECEIVER): TCP_Receiver.c 
 	$(CC) $(CFLAGS) -o $(RECEIVER) TCP_Receiver.c
 
-$(SENDER): TCP_Sender.c
+$(SENDER): TCP_Sender.c 
 	$(CC) $(CFLAGS) -o $(SENDER) TCP_Sender.c
 
 $(RUDP_RECEIVER): RUDP_Receiver.c $(RUDP_API_OBJ)
