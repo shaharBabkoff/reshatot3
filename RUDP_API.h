@@ -1,7 +1,6 @@
-#include<stdio.h>
+#include <stdio.h>
 #include <netinet/in.h>
 #include <stdbool.h>
-
 
 #define MAX_PKT_SIZE 1472
 #define HEADER_SIZE sizeof(RUDP_Header)
@@ -9,9 +8,6 @@
 #define TIMEOUT_SEC 2
 #define MAX_WAIT_TIME 2
 #define MAX_RETRANSMITS 1000
-
-
-
 
 
 // typedef enum
@@ -25,9 +21,7 @@ typedef enum
     DATA = 0x01,
     ACK = 0x02,
     SYN = 0x04,
-    FIN = 0x08,
-    BEGIN_DATA_TRANSMITION = 0x10,
-    END_DATA_TRANSMITION = 0x20
+    FIN = 0x08
 } RUDP_Flag;
 
 typedef struct
@@ -35,9 +29,14 @@ typedef struct
     unsigned short length;
     unsigned short checksum;
     unsigned char flags;
+    unsigned char udf; // user define meta data
 } RUDP_Header;
 
-
+typedef struct
+{
+    RUDP_Header hdr;
+    char data[MAX_DATA_SIZE];
+} RUDP_Packet;
 // A struct that represents RUDP Socket
 typedef struct _rudp_socket
 {
@@ -61,10 +60,10 @@ int rudp_connect(RUDP_Socket *sockfd, const char *dest_ip, unsigned short int de
 int rudp_accept(RUDP_Socket *sockfd);
 
 // Receives data from the other side and put it into the buffer. Returns the number of received bytes on success, 0 if got FIN packet (disconnect), and -1 on error. Fails if called when the socket is disconnected.
-int rudp_recv(RUDP_Socket *sockfd, void *buffer, unsigned int buffer_size, unsigned char *flag);
+int rudp_recv(RUDP_Socket *sockfd, void *buffer, unsigned int buffer_size, unsigned char *udf);
 
 // Sends data stores in buffer to the other side. Returns the number of sent bytes on success, 0 if got FIN packet (disconnect), and -1 on error. Fails if called when the socket is disconnected.
-int rudp_send(RUDP_Socket *sockfd, void *buffer, unsigned int buffer_size, unsigned char flag);
+int rudp_send(RUDP_Socket *sockfd, void *buffer, unsigned int buffer_size, unsigned char udf);
 
 // Disconnects from an actively connected socket. Returns 1 on success, 0 when the socket is already disconnected (failure).
 int rudp_disconnect(RUDP_Socket *sockfd);

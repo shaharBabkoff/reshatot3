@@ -1,15 +1,10 @@
-#include "RUDP_API.c"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <arpa/inet.h>
 #include <sys/time.h> // For gettimeofday()
-#define TRUE 1
-#define FALSE 0
-#define COMMAND "COMMAND x"
-#define RECEIVE_COMMAND "COMMAND 1"
-#define EXIT_COMMAND "COMMAND 2"
-#define FILE_SIZE 3532695
+#include "RUDP_API.h"
+#include "RUDP.h"
 
 /*
  * @brief The maximum number of clients that the server can handle.
@@ -21,7 +16,7 @@
  * @brief The buffer size to store the received message.
  * @note The default buffer size is 1024.
  */
-#define BUFFER_SIZE 1024
+// #define BUFFER_SIZE 1024
 typedef struct TIME_AND_BANDWIDTH
 {
     double duration;
@@ -34,39 +29,43 @@ void usage()
     printf("Usage: ./RUDP_Receiver -p PORT\n");
     printf("PORT - The RUDP port of the Receiver.\n");
 }
-int get_command(int client_sock)
-{
-    int command = 0;
-    char command_buffer[sizeof(COMMAND)];
-    for (int i = 0; i < sizeof(COMMAND); i++)
-    {
-        rudp_recv(client_sock, &command_buffer[i]);
-    }
-    if (strcmp(command_buffer, EXIT_COMMAND) == 0)
-    {
-        printf("Received exit command\n");
-        command = 0;
-    }
-    else if (strcmp(command_buffer, RECEIVE_COMMAND) == 0)
-    {
-        command = 1;
-    }
 
-    return command;
+TIME_AND_BANDWIDTH *receive_file(RUDP_Socket *sock)
+{
+    TIME_AND_BANDWIDTH *ret_val = NULL;
+    struct timeval startTime, endTime;
+    int bytes_received = 0;
+    gettimeofday(&startTime, NULL);
+    while (true)
+    {
+        char buffer[MAX_DATA_SIZE];
+        unsigned char udf = 0;
+        int res = rudp_recv(sock, buffer, sizeof(buffer), &udf);
+        if (udf == END_FILE_TRANSMITION)
+        {
+            gettimeofday(&endTime, NULL);
+            printf("bytes received: %d\n", bytes_received);
+            ret_val = (TIME_AND_BANDWIDTH *)malloc(sizeof(TIME_AND_BANDWIDTH));
+            ret_val->duration = ((endTime.tv_sec - startTime.tv_sec) * 1000.0) + ((endTime.tv_usec - startTime.tv_usec) / 1000.0); // Convert to milliseconds
+            ret_val->bandwidth = bytes_received / ret_val->duration / (1024.0 * 1024.0);                                           // Speed in MB/s
+            ret_val->next = NULL;
+            break;
+        }
+        else if (res <= 0)
+        {
+            break;
+        } else {
+            bytes_received += res;
+        }
+    }
+    printf("receive_file received %d byted\n", bytes_received);
+    return ret_val;
 }
-// Function to get current time in milliseconds
-// long getCurrentTime()
-// {
-//     struct timeval te;
-//     gettimeofday(&te, NULL);                                    // Get current time
-//     long milliseconds = te.tv_sec * 1000LL + te.tv_usec / 1000; // Calculate milliseconds
-//     return milliseconds;
-// }
 
 int main(int argc, char *argv[])
 {
     TIME_AND_BANDWIDTH *time_and_bandwidth_list = NULL, *last_time_and_bandwidth = NULL;
-    char *buffer = (char *)malloc(FILE_SIZE);
+    // char *buffer = (char *)malloc(FILE_SIZE);
     int port = -1;
     if ((argc != 3) ||
         !(strcmp(argv[1], "-p") == 0) ||
@@ -79,102 +78,69 @@ int main(int argc, char *argv[])
     printf("port = %d\n", port);
     printf("Starting Receiver...\n");
 
-    int sock = -1;
+   
 
-    // The variable to store the server's address.
-    struct sockaddr_in server;
-
-    // The variable to store the client's address.
-    struct sockaddr_in client;
-
-    // Stores the client's structure length.
-    socklen_t client_len = sizeof(client);
-
-    // The variable to store the socket option for reusing the server's address.
-    int opt = 1;
-
-    memset(&server, 0, sizeof(server));
-    memset(&client, 0, sizeof(client));
-
-    sock = create_rudp_socket(port);
-    if (sock == -1)
+    RUDP_Socket *sock = rudp_socket(1, port);
+    if (rudp_accept(sock) == 0)
     {
-        perror("Failed to create RUDP socket");
-        return 1;
+        exit(-1);
     }
-    if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0)
+    while (true)
     {
-        perror("setsockopt(2)");
-        rudp_close(sock);
-        return 1;
+        unsigned char udf = 0;
+        rudp_recv(sock, NULL, 0, &udf);
+        if (udf == BEGIN_FILE_TRANSMITION)
+        {
+
+            TIME_AND_BANDWIDTH *tmp = NULL;
+            if ((tmp = receive_file(sock)) == NULL)
+            {
+                printf("socket dissconected, exiting\n");
+                break;
+            }
+            if (time_and_bandwidth_list == NULL)
+            {
+                time_and_bandwidth_list = tmp;
+                last_time_and_bandwidth = tmp;
+            }
+            else
+            {
+                last_time_and_bandwidth->next = tmp;
+                last_time_and_bandwidth = tmp;
+            }
+            printf("Waiting for Sender response...\n");
+        }
+        else
+        {
+            break;
+        }
     }
-     // Set the server's address to "0.0.0.0" (all IP addresses on the local machine).
-    server.sin_addr.s_addr = INADDR_ANY;
-
-    // Set the server's address family to AF_INET (IPv4).
-    server.sin_family = AF_INET;
-
-    // Set the server's port to the specified port. Note that the port must be in network byte order.
-    server.sin_port = htons(port);
-
-
-
-     printf("Waiting for RUDP connection...\n");
-
-
-
-    // struct sockaddr_in sender_addr;
-    // char buffer[BUFFER_SIZE];
-    // long startTime, endTime;
-    // int totalBytesReceived = 0, runCount = 1;
-    // double totalTime = 0.0, totalSpeed = 0.0;
-
-    // while (1)
-    // {
-    //     memset(buffer, 0, BUFFER_SIZE);
-    //     int bytesReceived = rudp_recv(sockfd, buffer, BUFFER_SIZE, &sender_addr);
-    //     if (bytesReceived <= 0)
-    //         continue; // Skip any errors or empty transmissions
-
-    //     if (runCount == 1)
-    //     {
-    //         printf("Connection request received, sending ACK.\n");
-    //         startTime = getCurrentTime(); // Start timing on first valid packet
-    //     }
-
-    //     totalBytesReceived += bytesReceived;
-    //     if (strcmp(buffer, "Fin") == 0)
-    //     {
-    //         endTime = getCurrentTime();                                          // End timing on receiving "Fin"
-    //         double timeTaken = (endTime - startTime) / 1000.0;                   // Convert to seconds
-    //         double speed = (totalBytesReceived / (1024.0 * 1024.0)) / timeTaken; // MB/s
-
-    //         printf("File transfer completed.\nACK sent.\n");
-    //         printf("----------------------------------\n");
-    //         printf("- * Statistics *\n-\n");
-    //         printf("- Run #%d Data: Time=%.2fms; Speed=%.2fMB/s\n-\n", runCount, timeTaken * 1000, speed);
-    //         printf("----------------------------------\n");
-
-    //         totalTime += timeTaken;
-    //         totalSpeed += speed;
-    //         totalBytesReceived = 0; // Reset for next run
-    //         runCount++;
-
-    //         // Wait for another "Fin" or program termination
-    //         printf("Waiting for Sender response...\n");
-    //         continue;
-    //     }
-    // }
-
-    // if (runCount > 1)
-    // {
-    //     printf("Receiver end.\n");
-    //     printf("----------------------------------\n");
-    //     printf("- Average time: %.2fms\n", (totalTime / (runCount - 1)) * 1000);
-    //     printf("- Average bandwidth: %.2fMB/s\n", totalSpeed / (runCount - 1));
-    //     printf("----------------------------------\n");
-    // }
-
-    // close_rudp_socket(sockfd);
+    rudp_disconnect(sock);
+    rudp_close(sock);
+    printf("----------------------------------\n");
+    printf("- * Statistics * -\n");
+    TIME_AND_BANDWIDTH *current = time_and_bandwidth_list;
+    double sum_avarege = 0;
+    double sum_bandwidth = 0;
+    int index = 0;
+    while (current != NULL)
+    {
+        index++;
+        printf("- Run #%d Data: Time=%.6fms; Speed=%.6fMB/s\n", index, current->duration, current->bandwidth);
+        sum_avarege += current->duration;
+        sum_bandwidth += current->bandwidth;
+        current = current->next;
+    }
+    printf("- Average time: %.2fms\n", sum_avarege / (double)index);
+    printf("- Average bandwidth: %.2fMB/s\n", sum_bandwidth / (double)index);
+    printf("----------------------------------\n");
+    printf("Receiver end.\n");
+    TIME_AND_BANDWIDTH *current2 = time_and_bandwidth_list, *temp;
+    while (current2 != NULL)
+    {
+        temp = current2;
+        current2 = current2->next;
+        free(temp);
+    }
     return 0;
 }

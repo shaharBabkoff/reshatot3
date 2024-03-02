@@ -1,10 +1,10 @@
-// #include "RUDP_API.c"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <arpa/inet.h>
 #include <unistd.h>
 #include "RUDP_API.h"
+#include "RUDP.h"
 
 // #define RECEIVER_IP "127.0.0.1"  // IP address of the receiver
 // #define SERVER_PORT 5061         // Port number the receiver is listening on
@@ -23,12 +23,13 @@ void usage()
 }
 void transmit_file_data(RUDP_Socket *sock, struct data *data, int arraySize)
 {
-
+    rudp_send(sock, NULL, 0, BEGIN_FILE_TRANSMITION );
     for (int i = 0; i < arraySize; i++)
     {
-        rudp_send(sock, data[i].data, data[i].size, DATA);
+        rudp_send(sock, data[i].data, data[i].size, 0);
     }
-    
+    rudp_send(sock, NULL, 0, END_FILE_TRANSMITION);
+
 }
 int main(int argc, char *argv[])
 {
@@ -54,7 +55,7 @@ int main(int argc, char *argv[])
 
     // char *buffer = (char *)malloc(FILE_SIZE);
     FILE *fp;
-    char *filename = "testFile";
+    char *filename = "testFile1";
     fp = fopen(filename, "r");
 
     if (fp == NULL)
@@ -75,12 +76,13 @@ int main(int argc, char *argv[])
             data_array[i].size = bytes_read;
         }
     }
+    printf("array size is %d, last buffer size is %d", array_size, (int)data_array[array_size - 1].size);
     // for (int i = 0; i < MAX_DATA_SIZE; i++)
     // {
     //     printf("%c", data_array[3][i]);
     // }
 
-    RUDP_Socket *sock = rudp_socket(0, port);
+    RUDP_Socket *sock = rudp_socket(0, 0);
     rudp_connect(sock, ip, port);
     fprintf(stdout, "Successfully connected to the receiver !\n");
 

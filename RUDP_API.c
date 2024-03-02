@@ -7,8 +7,10 @@
 #include <arpa/inet.h>
 #include <errno.h>
 #include <time.h>
-#include <sys/time.h> 
+#include <sys/time.h>
 #include "RUDP_API.h"
+
+#define min(a, b) ((a) < (b) ? (a) : (b))
 
 unsigned short int calculate_checksum(void *data, unsigned int bytes)
 {
@@ -34,12 +36,11 @@ unsigned short int calculate_checksum(void *data, unsigned int bytes)
 
 RUDP_Socket *rudp_socket(bool isServer, unsigned short int listen_port)
 {
-
+    RUDP_Socket *rudp_sock = (RUDP_Socket *)malloc(sizeof(RUDP_Socket));
     int sock = -1;
     int opt = 1;
     // The variable to store the server's address.
-    struct sockaddr_in server;
-    memset(&server, 0, sizeof(server));
+    memset(&rudp_sock->dest_addr, 0, sizeof(rudp_sock->dest_addr));
 
     // The variable to store the client's address.
     // struct sockaddr_in client;
@@ -47,18 +48,23 @@ RUDP_Socket *rudp_socket(bool isServer, unsigned short int listen_port)
     if (sock == -1)
     {
         perror("socket(2)");
+        free(rudp_sock);
         return NULL;
     }
 
     if (isServer)
     {
+        struct sockaddr_in server;
+        memset(&server, 0, sizeof(server));
+
         if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0)
         {
             perror("setsockopt(2)");
             close(sock);
+            free(rudp_sock);
             return NULL;
         }
-
+        printf("after setsockopt SO_REUSEADDR\n");
         // Set the server's address to "0.0.0.0" (all IP addresses on the local machine).
         server.sin_addr.s_addr = INADDR_ANY;
         server.sin_family = AF_INET;
@@ -71,8 +77,10 @@ RUDP_Socket *rudp_socket(bool isServer, unsigned short int listen_port)
         {
             perror("bind(2)");
             close(sock);
+            free(rudp_sock);
             return NULL;
         }
+        printf("after bind\n");
     }
     else
     {
@@ -81,15 +89,15 @@ RUDP_Socket *rudp_socket(bool isServer, unsigned short int listen_port)
         {
             perror("setsockopt(2)");
             close(sock);
+            free(rudp_sock);
             return NULL;
         }
     }
 
-    RUDP_Socket *rudp_sock = (RUDP_Socket *)malloc(sizeof(RUDP_Socket));
     rudp_sock->isServer = isServer;
     rudp_sock->socket_fd = sock;
     rudp_sock->isConnected = false;
-    memset(&(rudp_sock->dest_addr), 0, sizeof(server));
+    printf("done creating socket\n");
     return rudp_sock;
 }
 
@@ -102,35 +110,41 @@ int rudp_connect(RUDP_Socket *sockfd, const char *dest_ip, unsigned short int de
     {
         return 0;
     }
-    struct sockaddr_in server;
-    memset(&server, 0, sizeof(server));
-    if (inet_pton(AF_INET, dest_ip, &server.sin_addr) <= 0)
+    printf("trying to connect...%s:%d\n", dest_ip, dest_port);
+    // struct sockaddr_in server;
+    memset(&sockfd->dest_addr, 0, sizeof(sockfd->dest_addr));
+    if (inet_pton(AF_INET, dest_ip, &sockfd->dest_addr.sin_addr) <= 0)
     {
         perror("inet_pton(3)");
         close(sockfd->socket_fd);
         return 0;
     }
 
-    server.sin_family = AF_INET;
-    server.sin_port = htons(dest_port);
-    sockfd->dest_addr = server;
+    sockfd->dest_addr.sin_family = AF_INET;
+    sockfd->dest_addr.sin_port = htons(dest_port);
+    // sockfd->dest_addr = server;
     RUDP_Header hdr;
     hdr.checksum = 0;
     hdr.flags = SYN;
     hdr.length = 0;
+    hdr.udf = 0;
     hdr.checksum = calculate_checksum(&hdr, sizeof(hdr));
-    int bytes_sent = sendto(sockfd->socket_fd, &hdr, sizeof(hdr), 0, (struct sockaddr *)&server, sizeof(server));
+    printf("sending SYN\n");
+    int bytes_sent = sendto(sockfd->socket_fd, &hdr, sizeof(hdr), 0, (struct sockaddr *)&sockfd->dest_addr, sizeof(sockfd->dest_addr));
     if (bytes_sent <= 0)
     {
         perror("sendto(2)");
         close(sockfd->socket_fd);
         return 0;
     }
+    printf("sent %d bytes", bytes_sent);
     struct sockaddr_in recv_server;
     socklen_t recv_server_len = sizeof(recv_server);
+    printf("calling recvfrom\n");
     int bytes_received = recvfrom(sockfd->socket_fd, &hdr, sizeof(hdr), 0, (struct sockaddr *)&recv_server, &recv_server_len);
     if (bytes_received <= 0)
     {
+        printf("failed to recvfrom\n");
         perror("recvfrom(2)");
         close(sockfd->socket_fd);
         return 0;
@@ -139,16 +153,19 @@ int rudp_connect(RUDP_Socket *sockfd, const char *dest_ip, unsigned short int de
     hdr.checksum = 0;
     if (calculate_checksum(&hdr, sizeof(hdr)) != temp)
     {
+        printf("checksumc failed\n");
         perror("checksum");
         close(sockfd->socket_fd);
         return 0;
     }
     if (hdr.flags != (SYN | ACK))
     {
+        printf("no SYN | ACK\n");
         perror("NACK");
         close(sockfd->socket_fd);
         return 0;
     }
+    printf("received SYN | ACK\n");
     sockfd->isConnected = true;
     return 1;
 }
@@ -162,13 +179,17 @@ int rudp_accept(RUDP_Socket *sockfd)
     {
         return 0;
     }
+    printf("in accept\n");
     struct sockaddr_in client;
     socklen_t client_len = sizeof(client);
     memset(&client, 0, sizeof(client));
     RUDP_Header hdr;
+    printf("calling recvfrom\n");
     int bytes_received = recvfrom(sockfd->socket_fd, &hdr, sizeof(hdr), 0, (struct sockaddr *)&client, &client_len);
+    printf("recvfrom returned %d\n", bytes_received);
     if (bytes_received <= 0)
     {
+        printf("failed recvfrom\n");
         perror("recvfrom(2)");
         close(sockfd->socket_fd);
         return 0;
@@ -177,33 +198,47 @@ int rudp_accept(RUDP_Socket *sockfd)
     hdr.checksum = 0;
     if (calculate_checksum(&hdr, sizeof(hdr)) != temp)
     {
+        printf("checksum failed\n");
         perror("checksum");
         close(sockfd->socket_fd);
         return 0;
     }
     if (hdr.flags != SYN)
     {
+        printf("not SYN\n");
         perror("NACK");
         close(sockfd->socket_fd);
         return 0;
     }
+    printf("received SYN\n");
+    RUDP_Header syn_ack_hdr;
+    syn_ack_hdr.flags = SYN | ACK;
+    syn_ack_hdr.checksum = 0;
+    syn_ack_hdr.checksum = calculate_checksum(&syn_ack_hdr, sizeof(syn_ack_hdr));
+    sendto(sockfd->socket_fd, &syn_ack_hdr, sizeof(syn_ack_hdr), 0, (struct sockaddr *)&client, sizeof(client));
     sockfd->isConnected = true;
     sockfd->dest_addr = client;
     return 1;
 }
 
-// Receives data from the other side and put it into the buffer.
+// Receives data from the other side and puts it into the buffer.
 // Returns the number of received bytes on success, 0 if got FIN packet (disconnect), and -1 on error.
 // Fails if called when the socket is disconnected.
 
-int rudp_recv(RUDP_Socket *sockfd, void *buffer, unsigned int buffer_size, unsigned char *flag)
+int rudp_recv(RUDP_Socket *sockfd, void *buffer, unsigned int buffer_size, unsigned char *udf)
 {
+    int ret_val = 0;
     if (!sockfd->isConnected)
     {
         return -1;
     }
+    if (buffer_size > MAX_DATA_SIZE)
+    {
+        return -1;
+    }
     socklen_t client_len = sizeof(sockfd->dest_addr);
-    int bytes_received = recvfrom(sockfd->socket_fd, buffer, buffer_size, 0, (struct sockaddr *)&sockfd->dest_addr, &client_len);
+    RUDP_Packet packet;
+    int bytes_received = recvfrom(sockfd->socket_fd, &packet, sizeof(packet), 0, (struct sockaddr *)&sockfd->dest_addr, &client_len);
     if (bytes_received <= 0)
     {
         perror("recvfrom(2)");
@@ -211,11 +246,15 @@ int rudp_recv(RUDP_Socket *sockfd, void *buffer, unsigned int buffer_size, unsig
         sockfd->isConnected = false;
         return 0;
     }
-    RUDP_Header *phdr;
-    phdr = (RUDP_Header *)buffer;
-    unsigned short temp = phdr->checksum;
-    phdr->checksum = 0;
-    if (calculate_checksum(buffer, bytes_received) != temp)
+    printf("rudp_recv received %d bytes. length=%d, checksum=%d, flags=%d, udf=%d\n",
+           bytes_received,
+           packet.hdr.length,
+           packet.hdr.checksum,
+           packet.hdr.flags,
+           packet.hdr.udf);
+    unsigned short temp = packet.hdr.checksum;
+    packet.hdr.checksum = 0;
+    if (calculate_checksum(&packet, bytes_received) != temp)
     {
         perror("checksum");
         return -1;
@@ -224,23 +263,34 @@ int rudp_recv(RUDP_Socket *sockfd, void *buffer, unsigned int buffer_size, unsig
     RUDP_Header hdr;
     hdr.flags = ACK;
     hdr.length = 0;
+    hdr.udf = 0;
+    hdr.checksum = 0;
     hdr.checksum = calculate_checksum(&hdr, sizeof(hdr));
     sendto(sockfd->socket_fd, &hdr, sizeof(hdr), 0, (struct sockaddr *)&sockfd->dest_addr, sizeof(sockfd->dest_addr));
 
-    if (phdr->flags == FIN)
+    if (packet.hdr.flags == FIN)
     {
         close(sockfd->socket_fd);
         sockfd->isConnected = false;
-        bytes_received = 0;
+        ret_val = 0;
     }
-    *flag = phdr->flags;
-    return bytes_received;
+    else
+    {
+        memcpy(buffer, packet.data, min(buffer_size, packet.hdr.length));
+        ret_val = packet.hdr.length;
+    }
+    if (udf != NULL)
+    {
+        *udf = packet.hdr.udf;
+    }
+
+    return ret_val;
 }
 
 // Sends data stored in buffer to the other side.
 // Returns the number of sent bytes on success, 0 if got FIN packet (disconnect),
 // and -1 on error. Fails if called when the socket is disconnected.
-int rudp_send(RUDP_Socket *sockfd, void *buffer, unsigned int buffer_size, unsigned char flag)
+int rudp_send(RUDP_Socket *sockfd, void *buffer, unsigned int buffer_size, unsigned char udf)
 {
 
     int ret_val = -1;
@@ -248,24 +298,27 @@ int rudp_send(RUDP_Socket *sockfd, void *buffer, unsigned int buffer_size, unsig
     {
         return -1;
     }
-
-    RUDP_Header *phdr = malloc(buffer_size + sizeof(RUDP_Header));
-    phdr->flags = DATA;
-    phdr->length = buffer_size;
-    memcpy(buffer + sizeof(RUDP_Header), buffer, buffer_size);
-    phdr->checksum = 0;
-    phdr->checksum = calculate_checksum(phdr, buffer_size + sizeof(RUDP_Header));
+    if (buffer_size > MAX_DATA_SIZE)
+    {
+        return -1;
+    }
+    RUDP_Packet packet;
+    packet.hdr.flags = DATA;
+    packet.hdr.length = buffer_size;
+    packet.hdr.udf = udf;
+    memcpy(packet.data, buffer, buffer_size);
+    packet.hdr.checksum = 0;
+    packet.hdr.checksum = calculate_checksum(&packet, buffer_size + sizeof(RUDP_Header));
     socklen_t client_len = sizeof(sockfd->dest_addr);
 
     int counter = 0;
     while (counter < MAX_RETRANSMITS)
     {
-        int bytes_sent = sendto(sockfd->socket_fd, phdr, buffer_size + sizeof(RUDP_Header), 0, (struct sockaddr *)&sockfd->dest_addr, sizeof(sockfd->dest_addr));
+        int bytes_sent = sendto(sockfd->socket_fd, &packet, buffer_size + sizeof(RUDP_Header), 0, (struct sockaddr *)&sockfd->dest_addr, sizeof(sockfd->dest_addr));
         if (bytes_sent <= 0)
         {
             perror("sendto(2)");
             rudp_disconnect(sockfd);
-            free(phdr);
             return -1;
         }
         RUDP_Header hdr;
@@ -281,7 +334,6 @@ int rudp_send(RUDP_Socket *sockfd, void *buffer, unsigned int buffer_size, unsig
             {
                 perror("recvfrom(2)");
                 rudp_disconnect(sockfd);
-                free(phdr);
                 return -1;
             }
         }
@@ -289,7 +341,6 @@ int rudp_send(RUDP_Socket *sockfd, void *buffer, unsigned int buffer_size, unsig
         {
             perror("recvfrom(2)");
             rudp_disconnect(sockfd);
-            free(phdr);
             return -1;
         }
         else
@@ -318,8 +369,6 @@ int rudp_send(RUDP_Socket *sockfd, void *buffer, unsigned int buffer_size, unsig
             break;
         }
     }
-
-    free(phdr);
     return ret_val;
 }
 
@@ -335,6 +384,7 @@ int rudp_disconnect(RUDP_Socket *sockfd)
         hdr.flags = FIN;
         hdr.length = 0;
         hdr.checksum = calculate_checksum(&hdr, sizeof(hdr));
+        hdr.udf = 0;
         sendto(sockfd->socket_fd, &hdr, sizeof(hdr), 0, (struct sockaddr *)&(sockfd->dest_addr), sizeof(sockfd->dest_addr));
         close(sockfd->socket_fd);
         sockfd->isConnected = false;
