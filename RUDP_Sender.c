@@ -9,7 +9,7 @@
 // #define RECEIVER_IP "127.0.0.1"  // IP address of the receiver
 // #define SERVER_PORT 5061         // Port number the receiver is listening on
 // #define BUFFER_SIZE 1024 // Size of the buffer for sending data
-#define FILE_SIZE 40194997
+#define FILE_SIZE 3532695
 typedef struct data
 {
     size_t size;

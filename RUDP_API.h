@@ -6,7 +6,7 @@
 #define HEADER_SIZE sizeof(RUDP_Header)
 #define MAX_DATA_SIZE (MAX_PKT_SIZE - HEADER_SIZE)
 #define TIMEOUT_SEC 2
-#define MAX_WAIT_TIME 2
+#define MAX_WAIT_TIME 500000
 #define MAX_RETRANSMITS 1000
 
 

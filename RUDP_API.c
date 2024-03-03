@@ -84,7 +84,7 @@ RUDP_Socket *rudp_socket(bool isServer, unsigned short int listen_port)
     }
     else
     {
-        struct timeval tv = {MAX_WAIT_TIME, 0};
+        struct timeval tv = {0, MAX_WAIT_TIME};
         if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (char *)&tv, sizeof(tv)) == -1)
         {
             perror("setsockopt(2)");
@@ -230,17 +230,22 @@ int rudp_recv(RUDP_Socket *sockfd, void *buffer, unsigned int buffer_size, unsig
     int ret_val = 0;
     if (!sockfd->isConnected)
     {
+        printf("rudp_recv: socket is disconnected\n");
         return -1;
     }
     if (buffer_size > MAX_DATA_SIZE)
     {
+        printf("rudp_recv: buffer too large\n");
         return -1;
     }
-    socklen_t client_len = sizeof(sockfd->dest_addr);
+    struct sockaddr_in client;
+    socklen_t client_len = sizeof(client);
+    memset(&client, 0, sizeof(client));
     RUDP_Packet packet;
-    int bytes_received = recvfrom(sockfd->socket_fd, &packet, sizeof(packet), 0, (struct sockaddr *)&sockfd->dest_addr, &client_len);
+    int bytes_received = recvfrom(sockfd->socket_fd, &packet, sizeof(packet), 0, (struct sockaddr *)&client, &client_len);
     if (bytes_received <= 0)
     {
+        printf("rudp_recv: bytes received %d\n", bytes_received);
         perror("recvfrom(2)");
         close(sockfd->socket_fd);
         sockfd->isConnected = false;
@@ -256,6 +261,7 @@ int rudp_recv(RUDP_Socket *sockfd, void *buffer, unsigned int buffer_size, unsig
     packet.hdr.checksum = 0;
     if (calculate_checksum(&packet, bytes_received) != temp)
     {
+        printf("rudp_recv: checksum failed\n");
         perror("checksum");
         return -1;
     }
@@ -310,7 +316,8 @@ int rudp_send(RUDP_Socket *sockfd, void *buffer, unsigned int buffer_size, unsig
     memcpy(packet.data, buffer, buffer_size);
     packet.hdr.checksum = 0;
     packet.hdr.checksum = calculate_checksum(&packet, buffer_size + sizeof(RUDP_Header));
-    socklen_t client_len = sizeof(sockfd->dest_addr);
+    struct sockaddr_in recv_server;
+    socklen_t recv_server_len = sizeof(recv_server);
 
     int counter = 0;
     while (counter < MAX_RETRANSMITS)
@@ -323,11 +330,12 @@ int rudp_send(RUDP_Socket *sockfd, void *buffer, unsigned int buffer_size, unsig
             return -1;
         }
         RUDP_Header hdr;
-        int bytes_received = recvfrom(sockfd->socket_fd, &hdr, sizeof(hdr), 0, (struct sockaddr *)&sockfd->dest_addr, &client_len);
+        int bytes_received = recvfrom(sockfd->socket_fd, &hdr, sizeof(hdr), 0, (struct sockaddr *)&recv_server, &recv_server_len);
         if (bytes_received < 0)
         {
             if (errno == EAGAIN || errno == EWOULDBLOCK)
             {
+                printf("received timeout, incrementing counter=%d\n", counter);
                 counter++;
                 continue;
             }
@@ -350,12 +358,14 @@ int rudp_send(RUDP_Socket *sockfd, void *buffer, unsigned int buffer_size, unsig
             hdr.checksum = 0;
             if (calculate_checksum(&hdr, sizeof(hdr)) != temp)
             {
+                printf("checksum failed!!");
                 perror("checksum");
                 counter++;
                 continue;
             }
             if (hdr.flags != FIN && hdr.flags != ACK)
             {
+                printf("invalid flags!!!");
                 perror("NACK");
                 ret_val = -1;
             }
