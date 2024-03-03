@@ -81,7 +81,7 @@ TIME_AND_BANDWIDTH *read_file(int client_sock, int file_size, char *buffer, int 
     ret_val = (TIME_AND_BANDWIDTH *)malloc(sizeof(TIME_AND_BANDWIDTH));
     // ret_val->duration = (endTime.tv_sec - startTime.tv_sec) + (endTime.tv_usec - startTime.tv_usec) / 1000000.0;
     ret_val->duration = ((endTime.tv_sec - startTime.tv_sec) * 1000.0) + ((endTime.tv_usec - startTime.tv_usec) / 1000.0); // Convert to milliseconds
-    ret_val->bandwidth = bytes_received / ret_val->duration / (1024.0 * 1024.0);                                           // Speed in MB/s
+    ret_val->bandwidth = (bytes_received / ret_val->duration / (1024.0 * 1024.0)) * 1000;                                           // Speed in MB/s
     ret_val->next = NULL;
     return ret_val;
 }

@@ -47,7 +47,7 @@ TIME_AND_BANDWIDTH *receive_file(RUDP_Socket *sock)
             printf("bytes received: %d\n", bytes_received);
             ret_val = (TIME_AND_BANDWIDTH *)malloc(sizeof(TIME_AND_BANDWIDTH));
             ret_val->duration = ((endTime.tv_sec - startTime.tv_sec) * 1000.0) + ((endTime.tv_usec - startTime.tv_usec) / 1000.0); // Convert to milliseconds
-            ret_val->bandwidth = bytes_received / ret_val->duration / (1024.0 * 1024.0);                                           // Speed in MB/s
+            ret_val->bandwidth = (bytes_received / ret_val->duration / (1024.0 * 1024.0)) * 1000;                                           // Speed in MB/s
             ret_val->next = NULL;
             break;
         }

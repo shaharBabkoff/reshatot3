@@ -137,7 +137,7 @@ int rudp_connect(RUDP_Socket *sockfd, const char *dest_ip, unsigned short int de
         close(sockfd->socket_fd);
         return 0;
     }
-    printf("sent %d bytes", bytes_sent);
+    printf("sent %d bytes\n", bytes_sent);
     struct sockaddr_in recv_server;
     socklen_t recv_server_len = sizeof(recv_server);
     printf("calling recvfrom\n");
@@ -246,12 +246,12 @@ int rudp_recv(RUDP_Socket *sockfd, void *buffer, unsigned int buffer_size, unsig
         sockfd->isConnected = false;
         return 0;
     }
-    printf("rudp_recv received %d bytes. length=%d, checksum=%d, flags=%d, udf=%d\n",
-           bytes_received,
-           packet.hdr.length,
-           packet.hdr.checksum,
-           packet.hdr.flags,
-           packet.hdr.udf);
+    // printf("rudp_recv received %d bytes. length=%d, checksum=%d, flags=%d, udf=%d\n",
+    //        bytes_received,
+    //        packet.hdr.length,
+    //        packet.hdr.checksum,
+    //        packet.hdr.flags,
+    //        packet.hdr.udf);
     unsigned short temp = packet.hdr.checksum;
     packet.hdr.checksum = 0;
     if (calculate_checksum(&packet, bytes_received) != temp)
@@ -270,6 +270,7 @@ int rudp_recv(RUDP_Socket *sockfd, void *buffer, unsigned int buffer_size, unsig
 
     if (packet.hdr.flags == FIN)
     {
+        printf("rudp_recv received FIN, closing socket\n");
         close(sockfd->socket_fd);
         sockfd->isConnected = false;
         ret_val = 0;
@@ -379,6 +380,7 @@ int rudp_disconnect(RUDP_Socket *sockfd)
 
     if (sockfd->isConnected)
     {
+        printf("rudp_disconnect sending FIN\n");
         RUDP_Header hdr;
         hdr.checksum = 0;
         hdr.flags = FIN;
@@ -392,6 +394,7 @@ int rudp_disconnect(RUDP_Socket *sockfd)
     }
     else
     {
+        printf("rudp_disconnect doing nothing\n");
         return 0;
     }
 }
@@ -399,6 +402,7 @@ int rudp_disconnect(RUDP_Socket *sockfd)
 // This function releases all the memory allocation and resources of the socket.
 int rudp_close(RUDP_Socket *sockfd)
 {
+    printf("rudp_close\n");
     rudp_disconnect(sockfd);
     free(sockfd);
     return 0;

@@ -9,12 +9,12 @@
 // #define RECEIVER_IP "127.0.0.1"  // IP address of the receiver
 // #define SERVER_PORT 5061         // Port number the receiver is listening on
 // #define BUFFER_SIZE 1024 // Size of the buffer for sending data
-#define FILE_SIZE 3532695
+#define FILE_SIZE 40194997
 typedef struct data
 {
     size_t size;
     char data[MAX_DATA_SIZE];
-}data;
+} data;
 
 void usage()
 {
@@ -23,13 +23,12 @@ void usage()
 }
 void transmit_file_data(RUDP_Socket *sock, struct data *data, int arraySize)
 {
-    rudp_send(sock, NULL, 0, BEGIN_FILE_TRANSMITION );
+    rudp_send(sock, NULL, 0, BEGIN_FILE_TRANSMITION);
     for (int i = 0; i < arraySize; i++)
     {
         rudp_send(sock, data[i].data, data[i].size, 0);
     }
     rudp_send(sock, NULL, 0, END_FILE_TRANSMITION);
-
 }
 int main(int argc, char *argv[])
 {
@@ -55,7 +54,7 @@ int main(int argc, char *argv[])
 
     // char *buffer = (char *)malloc(FILE_SIZE);
     FILE *fp;
-    char *filename = "testFile1";
+    char *filename = "testFile";
     fp = fopen(filename, "r");
 
     if (fp == NULL)
@@ -76,31 +75,32 @@ int main(int argc, char *argv[])
             data_array[i].size = bytes_read;
         }
     }
-    printf("array size is %d, last buffer size is %d", array_size, (int)data_array[array_size - 1].size);
+    printf("array size is %d, last buffer size is %d\n", array_size, (int)data_array[array_size - 1].size);
     // for (int i = 0; i < MAX_DATA_SIZE; i++)
     // {
     //     printf("%c", data_array[3][i]);
     // }
 
     RUDP_Socket *sock = rudp_socket(0, 0);
-    rudp_connect(sock, ip, port);
-    fprintf(stdout, "Successfully connected to the receiver !\n");
-
-    char userChoise = '1';
-
-    while (userChoise == '1')
+    if (rudp_connect(sock, ip, port) == 1)
     {
+        printf("Successfully connected to the receiver !\n");
 
-        transmit_file_data(sock, data_array, array_size);
-        printf("please enter your choice: (1 for resending, any other character to quit)\n");
-        scanf(" %c", &userChoise);
-        printf("user choice %c\n", userChoise);
+        char userChoise = '1';
+
+        while (userChoise == '1')
+        {
+
+            transmit_file_data(sock, data_array, array_size);
+            printf("please enter your choice: (1 for resending, any other character to quit)\n");
+            scanf(" %c", &userChoise);
+            printf("user choice %c\n", userChoise);
+        }
+        rudp_disconnect(sock);
+    } else {
+        printf("failed to connect to the receiver, please make sure the receiver is up and running on %s:%d and try again\n", ip, port);
     }
-    rudp_disconnect(sock);
     rudp_close(sock);
-    fprintf(stdout, "Connection closed!\n");
     free(data_array);
     return 0;
 }
-
-

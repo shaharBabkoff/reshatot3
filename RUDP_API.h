@@ -10,12 +10,6 @@
 #define MAX_RETRANSMITS 1000
 
 
-// typedef enum
-// {
-//     false,
-//     true
-// } bool;
-
 typedef enum
 {
     DATA = 0x01,
@@ -26,17 +20,20 @@ typedef enum
 
 typedef struct
 {
-    unsigned short length;
-    unsigned short checksum;
-    unsigned char flags;
+    unsigned short length; // length of the data not including the header itself
+    unsigned short checksum; // calculated checksum of the entire packet (including the header while checksum is initialized to 0)
+    unsigned char flags; // value describing the request. can have one of the following values:  SYN, ACK, SYN | ACK, DATA, FIN
     unsigned char udf; // user define meta data
 } RUDP_Header;
 
+
+// a struct to combine a header and data for purposes of calculating checksum and for calling sento/recvfrom
 typedef struct
 {
-    RUDP_Header hdr;
-    char data[MAX_DATA_SIZE];
+    RUDP_Header hdr; // header for the packet
+    char data[MAX_DATA_SIZE]; // data of the packet
 } RUDP_Packet;
+
 // A struct that represents RUDP Socket
 typedef struct _rudp_socket
 {
